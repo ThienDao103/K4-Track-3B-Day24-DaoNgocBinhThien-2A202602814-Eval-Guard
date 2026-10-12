@@ -110,19 +110,26 @@ def judge_binary(question, answer, reference, *, client=None):
     if client is None:
         from openai import OpenAI
         client = OpenAI()
-    response = client.chat.completions.create(
-        model=JUDGE_MODEL, temperature=0,
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": BINARY_SYSTEM_PROMPT},
-            {"role": "user", "content": json.dumps(
-                {"question": question, "answer": answer, "reference": reference},
-                ensure_ascii=False)},
-        ],
-    )
-    result = json.loads(response.choices[0].message.content)
-    if type(result.get("label")) is not int or result["label"] not in (0, 1):
-        raise ValueError("Binary judge label must be integer 0 or 1.")
-    if not isinstance(result.get("reasoning"), str) or not result["reasoning"].strip():
-        raise ValueError("Binary judge must explain its decision.")
-    return {"label": result["label"], "reasoning": result["reasoning"]}
+    import time
+    for attempt in range(5):
+        try:
+            response = client.chat.completions.create(
+                model=JUDGE_MODEL, temperature=0,
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": BINARY_SYSTEM_PROMPT},
+                    {"role": "user", "content": json.dumps(
+                        {"question": question, "answer": answer, "reference": reference},
+                        ensure_ascii=False)},
+                ],
+            )
+            result = json.loads(response.choices[0].message.content)
+            if type(result.get("label")) is not int or result["label"] not in (0, 1):
+                raise ValueError("Binary judge label must be integer 0 or 1.")
+            if not isinstance(result.get("reasoning"), str) or not result["reasoning"].strip():
+                raise ValueError("Binary judge must explain its decision.")
+            return {"label": result["label"], "reasoning": result["reasoning"]}
+        except Exception as e:
+            if isinstance(e, ValueError) or attempt == 4:
+                raise
+            time.sleep(5 * (attempt + 1))
